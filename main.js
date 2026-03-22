@@ -28,6 +28,11 @@ var initialState = {
   message: "Arrow keys / WASD to move. Reach the partner!"
 };
 
+
+// --- screen mode ---
+// "title", "instructions", "game", "end"
+var mode = "title";
+var selectedTitleOption = 0; // 0 = Start, 1 = Instructions
 var state = resetState();
 var endScreenStart = null;
 
@@ -39,30 +44,82 @@ function resetState() {
 // --- input ---
 var pendingMove = null;
 
+
 document.addEventListener("keydown", function (e) {
-  // restart from end screens
-  if (state.gameOver && (e.key === "r" || e.key === "R" || e.key === " ")) {
-    e.preventDefault();
-    state = resetState();
-    pendingMove = null;
-    render();
+  // --- TITLE SCREEN ---
+  if (mode === "title") {
+    if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") {
+      selectedTitleOption = 0;
+      render();
+      e.preventDefault();
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") {
+      selectedTitleOption = 1;
+      render();
+      e.preventDefault();
+      return;
+    }
+    if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+      if (selectedTitleOption === 0) {
+        // Start game
+        mode = "game";
+        state = resetState();
+        pendingMove = null;
+        render();
+      } else {
+        // Show instructions
+        mode = "instructions";
+        render();
+      }
+      e.preventDefault();
+      return;
+    }
     return;
   }
 
-  if (pendingMove) return; // one input per turn
-
-  var dx = 0, dy = 0;
-  switch (e.key) {
-    case "ArrowUp":    case "w": case "W": dy = -1; break;
-    case "ArrowDown":  case "s": case "S": dy =  1; break;
-    case "ArrowLeft":  case "a": case "A": dx = -1; break;
-    case "ArrowRight": case "d": case "D": dx =  1; break;
-    case " ": break; // wait
-    default: return;
+  // --- INSTRUCTIONS SCREEN ---
+  if (mode === "instructions") {
+    // Any key returns to title
+    mode = "title";
+    render();
+    e.preventDefault();
+    return;
   }
-  e.preventDefault();
-  pendingMove = { dx: dx, dy: dy };
-  if (!state.gameOver) processTurn();
+
+  // --- END SCREEN ---
+  if (mode === "end") {
+    if (e.key === "r" || e.key === "R" || e.key === " ") {
+      mode = "title";
+      render();
+      e.preventDefault();
+      return;
+    }
+    return;
+  }
+
+  // --- GAMEPLAY ---
+  if (mode === "game") {
+    if (state.gameOver) {
+      mode = "end";
+      render();
+      return;
+    }
+    if (pendingMove) return; // one input per turn
+
+    var dx = 0, dy = 0;
+    switch (e.key) {
+      case "ArrowUp":    case "w": case "W": dy = -1; break;
+      case "ArrowDown":  case "s": case "S": dy =  1; break;
+      case "ArrowLeft":  case "a": case "A": dx = -1; break;
+      case "ArrowRight": case "d": case "D": dx =  1; break;
+      case " ": break; // wait
+      default: return;
+    }
+    e.preventDefault();
+    pendingMove = { dx: dx, dy: dy };
+    if (!state.gameOver) processTurn();
+  }
 });
 
 // --- turn logic ---
@@ -102,6 +159,9 @@ function processTurn() {
         state.gameOver = true;
         state.won = true;
         state.message = "you stayed with her";
+        mode = "end";
+        render();
+        return;
       } else {
         state.message = "Turn " + state.turn + ": Gentle overlap! (" + state.overlapCount + "/" + state.overlapTarget + ")";
       }
@@ -115,6 +175,9 @@ function processTurn() {
         state.gameOver = true;
         state.won = true;
         state.message = "you didn't wait";
+        mode = "end";
+        render();
+        return;
       } else {
         state.message = "Turn " + state.turn + ": Forced overlap! -1 HP, locked for 2 turns. (" + state.overlapCount + "/" + state.overlapTarget + ")";
       }
@@ -147,6 +210,9 @@ function processTurn() {
     } else {
       state.message = "the moment passed";
     }
+    mode = "end";
+    render();
+    return;
   }
 
   state.turn++;
@@ -254,7 +320,15 @@ function movePartnerAway() {
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  if (state.gameOver) {
+  if (mode === "title") {
+    drawTitleScreen();
+    return;
+  }
+  if (mode === "instructions") {
+    drawInstructionsScreen();
+    return;
+  }
+  if (mode === "end") {
     if (!endScreenStart) {
       endScreenStart = Date.now();
       info.textContent = "";
@@ -262,12 +336,59 @@ function render() {
     }
     return;
   }
-
+  // mode === "game"
   drawGrid();
   drawEntities();
   drawHP();
   drawOverlapProgress();
   info.textContent = state.message;
+}
+
+function drawTitleScreen() {
+  ctx.fillStyle = "#1a1a2e";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = "center";
+  ctx.font = "32px monospace";
+  ctx.fillStyle = "#c06ef7";
+  ctx.fillText("Stay With Me", canvas.width / 2, canvas.height / 2 - 40);
+
+  ctx.font = "20px monospace";
+  for (var i = 0; i < 2; i++) {
+    ctx.fillStyle = (selectedTitleOption === i) ? "#fff" : "#888";
+    var text = i === 0 ? "Start" : "Instructions";
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2 + i * 36);
+  }
+  ctx.font = "13px monospace";
+  ctx.fillStyle = "#555";
+  ctx.fillText("↑/↓ or W/S to select, Enter/Space to confirm", canvas.width / 2, canvas.height / 2 + 80);
+  ctx.textAlign = "left";
+  info.textContent = "";
+}
+
+function drawInstructionsScreen() {
+  ctx.fillStyle = "#1a1a2e";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = "center";
+  ctx.font = "20px monospace";
+  ctx.fillStyle = "#fff";
+  ctx.fillText("How to Play", canvas.width / 2, 60);
+  ctx.font = "15px monospace";
+  ctx.fillStyle = "#c06ef7";
+  var lines = [
+    "Move with arrow keys or WASD.",
+    "Overlap with your partner to connect.",
+    "Wait for her to hesitate for a gentle overlap.",
+    "Forced overlap costs HP.",
+    "Every 4 turns, you lose 1 HP.",
+    "Reach 3 gentle/forced overlaps to win.",
+    "",
+    "Press any key to return."
+  ];
+  for (var i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], canvas.width / 2, 110 + i * 28);
+  }
+  ctx.textAlign = "left";
+  info.textContent = "";
 }
 
 function drawGrid() {
